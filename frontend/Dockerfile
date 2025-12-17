@@ -23,6 +23,9 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy source code
 COPY . .
 
+# Create public directory if it doesn't exist (to avoid Docker COPY errors)
+RUN mkdir -p public || true
+
 # Set build-time environment variables (if needed)
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
@@ -42,9 +45,15 @@ RUN addgroup -g 1001 -S nodejs && \
     adduser -S nextjs -u 1001
 
 # Copy necessary files from builder
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Copy public directory if it exists and has content (Next.js standalone doesn't include it automatically)
+# The public directory was created in builder stage, so it will always exist, but may be empty
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+RUN if [ ! -d ./public ] || [ -z "$(ls -A ./public 2>/dev/null)" ]; then \
+      rm -rf ./public && mkdir -p ./public; \
+    fi
 
 # Change ownership to non-root user
 RUN chown -R nextjs:nodejs /app
