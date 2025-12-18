@@ -13,6 +13,32 @@ vi.mock('../utils/jwt', () => ({
   generateToken: vi.fn(),
 }));
 
+vi.mock('../utils/cache', () => ({
+  isTokenBlacklisted: vi.fn().mockResolvedValue(false),
+  blacklistToken: vi.fn().mockResolvedValue(undefined),
+  invalidateUserCache: vi.fn().mockResolvedValue(undefined),
+  getCache: vi.fn().mockResolvedValue(null),
+  setCache: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../middleware/auth', () => ({
+  authenticate: vi.fn(async (request: any, reply: any) => {
+    // Only authenticate if token is provided
+    const token = request.cookies?.token;
+    if (!token) {
+      return reply.status(401).send({ error: 'Unauthorized: No token provided' });
+    }
+    // Set a mock user for the request
+    request.user = {
+      id: 'user-123',
+      email: 'test@example.com',
+      role: 'student',
+      suspended: false,
+    };
+  }),
+  requireRole: vi.fn(),
+}));
+
 import { buildServer } from '../server';
 import { db } from '../config/database';
 import { generateToken } from '../utils/jwt';
@@ -266,7 +292,9 @@ describe('Auth Routes', () => {
 
   describe('POST /api/auth/logout', () => {
     it('should logout successfully', async () => {
-      const response = await request(app.server).post('/api/auth/logout');
+      const response = await request(app.server)
+        .post('/api/auth/logout')
+        .set('Cookie', 'token=test-token');
 
       expect(response.status).toBe(200);
       expect(response.body.message).toBe('Logged out successfully');

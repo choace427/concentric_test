@@ -14,7 +14,7 @@ test.describe('Authentication Flow', () => {
   test('should show error for empty form submission', async ({ page }) => {
     await page.getByRole('button', { name: /login/i }).click();
     
-    await expect(page.getByText(/please fill in all fields/i)).toBeVisible();
+    await expect(page.getByText(/please fill in all fields/i).first()).toBeVisible();
   });
 
   test('should show error for invalid credentials', async ({ page }) => {
@@ -22,7 +22,7 @@ test.describe('Authentication Flow', () => {
     await page.getByLabel(/password/i).fill('wrongpassword');
     await page.getByRole('button', { name: /login/i }).click();
 
-    await expect(page.getByText(/invalid credentials/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/invalid credentials/i).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('should have Google OAuth button', async ({ page }) => {
