@@ -9,8 +9,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (skip postinstall scripts to avoid Playwright browser installation in Docker)
+RUN npm ci --ignore-scripts
 
 # Stage 2: Builder stage
 FROM node:20-alpine AS builder
