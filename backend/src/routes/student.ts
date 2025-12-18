@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '../config/database';
 import { requireRole } from '../middleware/auth';
 import { randomUUID } from 'crypto';
+import { invalidateStatsCache, invalidateClassCache } from '../utils/cache';
 
 const submissionSchema = z.object({
   assignment_id: z.string().uuid(),
@@ -127,6 +128,18 @@ export async function studentRoutes(fastify: FastifyInstance) {
           })
           .returningAll()
           .executeTakeFirst();
+
+        // Get class_id for cache invalidation
+        const assignmentWithClass = await db
+          .selectFrom('assignments')
+          .select(['class_id'])
+          .where('id', '=', body.assignment_id)
+          .executeTakeFirst();
+
+        // Invalidate cache
+        if (assignmentWithClass) {
+          await invalidateClassCache(assignmentWithClass.class_id);
+        }
 
         return reply.status(201).send({ submission });
       } catch (error) {

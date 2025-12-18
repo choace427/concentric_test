@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '../config/database';
 import { requireRole } from '../middleware/auth';
 import { randomUUID } from 'crypto';
+import { invalidateClassCache, invalidateStatsCache } from '../utils/cache';
 
 const classSchema = z.object({
   name: z.string().min(1),
@@ -84,6 +85,9 @@ export async function teacherRoutes(fastify: FastifyInstance) {
           .returningAll()
           .executeTakeFirst();
 
+        // Invalidate cache
+        await invalidateClassCache();
+
         return reply.status(201).send({ class: newClass });
       } catch (error) {
         if (error instanceof z.ZodError) {
@@ -119,6 +123,9 @@ export async function teacherRoutes(fastify: FastifyInstance) {
           return reply.status(404).send({ error: 'Class not found' });
         }
 
+        // Invalidate cache
+        await invalidateClassCache(id);
+
         return reply.send({ class: updatedClass });
       } catch (error) {
         if (error instanceof z.ZodError) {
@@ -145,6 +152,9 @@ export async function teacherRoutes(fastify: FastifyInstance) {
       if (result.length === 0) {
         return reply.status(404).send({ error: 'Class not found' });
       }
+
+      // Invalidate cache
+      await invalidateClassCache(id);
 
       return reply.send({ message: 'Class deleted successfully' });
     }
@@ -190,18 +200,21 @@ export async function teacherRoutes(fastify: FastifyInstance) {
         return reply.status(409).send({ error: 'Student already enrolled' });
       }
 
-      const enrollment = await db
-        .insertInto('class_students')
-        .values({
-          id: randomUUID(),
-          class_id: id,
-          student_id: studentId,
-          enrolled_at: new Date(),
-        })
-        .returningAll()
-        .executeTakeFirst();
+        const enrollment = await db
+          .insertInto('class_students')
+          .values({
+            id: randomUUID(),
+            class_id: id,
+            student_id: studentId,
+            enrolled_at: new Date(),
+          })
+          .returningAll()
+          .executeTakeFirst();
 
-      return reply.status(201).send({ enrollment });
+        // Invalidate cache
+        await invalidateClassCache(id);
+
+        return reply.status(201).send({ enrollment });
     }
   );
 
@@ -232,6 +245,9 @@ export async function teacherRoutes(fastify: FastifyInstance) {
       if (result.length === 0) {
         return reply.status(404).send({ error: 'Enrollment not found' });
       }
+
+      // Invalidate cache
+      await invalidateClassCache(id);
 
       return reply.send({ message: 'Student removed from class successfully' });
     }
@@ -297,6 +313,9 @@ export async function teacherRoutes(fastify: FastifyInstance) {
           .returningAll()
           .executeTakeFirst();
 
+        // Invalidate cache
+        await invalidateClassCache(body.class_id);
+
         return reply.status(201).send({ assignment });
       } catch (error) {
         if (error instanceof z.ZodError) {
@@ -338,6 +357,11 @@ export async function teacherRoutes(fastify: FastifyInstance) {
           .returningAll()
           .executeTakeFirst();
 
+        // Invalidate cache - need to get class_id first
+        if (updated) {
+          await invalidateClassCache(updated.class_id);
+        }
+
         return reply.send({ assignment: updated });
       } catch (error) {
         if (error instanceof z.ZodError) {
@@ -367,7 +391,19 @@ export async function teacherRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: 'Assignment not found' });
       }
 
+      // Get assignment class_id before deletion for cache invalidation
+      const assignmentToDelete = await db
+        .selectFrom('assignments')
+        .select(['class_id'])
+        .where('id', '=', id)
+        .executeTakeFirst();
+
       await db.deleteFrom('assignments').where('id', '=', id).execute();
+
+      // Invalidate cache
+      if (assignmentToDelete) {
+        await invalidateClassCache(assignmentToDelete.class_id);
+      }
 
       return reply.send({ message: 'Assignment deleted successfully' });
     }
@@ -401,6 +437,11 @@ export async function teacherRoutes(fastify: FastifyInstance) {
         .where('id', '=', id)
         .returningAll()
         .executeTakeFirst();
+
+      // Invalidate cache
+      if (updated) {
+        await invalidateClassCache(updated.class_id);
+      }
 
       return reply.send({ assignment: updated });
     }
@@ -454,7 +495,7 @@ export async function teacherRoutes(fastify: FastifyInstance) {
         const { assignmentId, submissionId } = request.params as { assignmentId: string; submissionId: string };
         const body = gradeSchema.parse(request.body as z.infer<typeof gradeSchema>);
 
-        const assignment = await db
+        const assignmentToUpdate = await db
           .selectFrom('assignments')
           .innerJoin('classes', 'assignments.class_id', 'classes.id')
           .select(['assignments.id'])
@@ -462,7 +503,7 @@ export async function teacherRoutes(fastify: FastifyInstance) {
           .where('classes.teacher_id', '=', user.id)
           .executeTakeFirst();
 
-        if (!assignment) {
+        if (!assignmentToUpdate) {
           return reply.status(404).send({ error: 'Assignment not found' });
         }
 
@@ -480,6 +521,19 @@ export async function teacherRoutes(fastify: FastifyInstance) {
 
         if (!submission) {
           return reply.status(404).send({ error: 'Submission not found' });
+        }
+
+        // Get class_id from assignment for cache invalidation
+        const assignmentToInvalidate = await db
+          .selectFrom('assignments')
+          .select(['class_id'])
+          .where('id', '=', assignmentId)
+          .executeTakeFirst();
+
+        // Invalidate stats cache (grades changed)
+        await invalidateStatsCache();
+        if (assignmentToInvalidate) {
+          await invalidateClassCache(assignmentToInvalidate.class_id);
         }
 
         return reply.send({ submission });

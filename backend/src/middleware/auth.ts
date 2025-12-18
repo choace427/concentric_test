@@ -2,6 +2,7 @@ import { FastifyRequest, FastifyReply, RouteGenericInterface } from 'fastify';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import { db } from '../config/database';
+import { isTokenBlacklisted, getCache, setCache, CACHE_KEYS, CACHE_TTL } from '../utils/cache';
 
 export interface JWTPayload {
   userId: string;
@@ -39,16 +40,34 @@ export async function authenticate(
       return reply.status(500).send({ error: 'Internal server error: JWT secret not configured' });
     }
 
+    // Check if token is blacklisted
+    const isBlacklisted = await isTokenBlacklisted(token);
+    if (isBlacklisted) {
+      return reply.status(401).send({ error: 'Unauthorized: Token has been revoked' });
+    }
+
     const decoded = jwt.verify(token, env.JWT_SECRET) as unknown as JWTPayload;
 
-    const user = await db
-      .selectFrom('users')
-      .select(['id', 'email', 'role', 'suspended'])
-      .where('id', '=', decoded.userId)
-      .executeTakeFirst();
+    // Try to get user from cache first
+    const cacheKey = `${CACHE_KEYS.USER}${decoded.userId}`;
+    let user = await getCache<UserPayload>(cacheKey);
 
     if (!user) {
-      return reply.status(401).send({ error: 'Unauthorized: User not found' });
+      // Fetch from database if not in cache
+      const dbUser = await db
+        .selectFrom('users')
+        .select(['id', 'email', 'role', 'suspended'])
+        .where('id', '=', decoded.userId)
+        .executeTakeFirst();
+
+      if (!dbUser) {
+        return reply.status(401).send({ error: 'Unauthorized: User not found' });
+      }
+
+      user = dbUser;
+      
+      // Cache the user data
+      await setCache(cacheKey, user, CACHE_TTL.USER);
     }
 
     if (user.suspended) {

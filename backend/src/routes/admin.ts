@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { db } from '../config/database';
 import { requireRole } from '../middleware/auth';
+import { invalidateUserCache, invalidateStatsCache } from '../utils/cache';
 
 const teacherGroupSchema = z.object({
   name: z.string().min(1),
@@ -145,6 +146,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
           .returningAll()
           .executeTakeFirst();
 
+        // Invalidate cache
+        await invalidateStatsCache();
+
         return reply.status(201).send({ user });
       } catch (error) {
         if (error instanceof z.ZodError) {
@@ -177,6 +181,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
           return reply.status(404).send({ error: 'User not found' });
         }
 
+        // Invalidate cache
+        await invalidateUserCache(id);
+        await invalidateStatsCache();
+
         return reply.send({ user });
       } catch (error) {
         if (error instanceof z.ZodError) {
@@ -197,6 +205,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
       if (result.length === 0) {
         return reply.status(404).send({ error: 'User not found' });
       }
+
+      // Invalidate cache
+      await invalidateUserCache(id);
+      await invalidateStatsCache();
 
       return reply.send({ message: 'User deleted successfully' });
     }
@@ -222,6 +234,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: 'User not found' });
       }
 
+      // Invalidate cache
+      await invalidateUserCache(id);
+
       return reply.send({ user, message: 'User suspended successfully' });
     }
   );
@@ -245,6 +260,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
       if (!user) {
         return reply.status(404).send({ error: 'User not found' });
       }
+
+      // Invalidate cache
+      await invalidateUserCache(id);
 
       return reply.send({ user, message: 'User unsuspended successfully' });
     }

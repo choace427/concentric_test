@@ -4,6 +4,8 @@ import { randomUUID } from 'crypto';
 import { db } from '../config/database';
 import { generateToken } from '../utils/jwt';
 import { authenticate } from '../middleware/auth';
+import { blacklistToken, invalidateUserCache } from '../utils/cache';
+import { rateLimiters } from '../middleware/rate-limit';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -12,9 +14,11 @@ const loginSchema = z.object({
 });
 
 export async function authRoutes(fastify: FastifyInstance) {
-  fastify.post(
+  // Apply rate limiting to login endpoint
+  fastify.post<{ Body: z.infer<typeof loginSchema> }>(
     '/login',
-    async (request: FastifyRequest<{ Body: z.infer<typeof loginSchema> }>, reply: FastifyReply) => {
+    { preHandler: rateLimiters.auth },
+    async (request, reply) => {
       try {
         let body;
         try {
@@ -138,10 +142,27 @@ export async function authRoutes(fastify: FastifyInstance) {
     }
   );
 
-  fastify.post('/logout', async (_request: FastifyRequest, reply: FastifyReply) => {
-    reply.clearCookie('token', { path: '/' });
-    return reply.send({ message: 'Logged out successfully' });
-  });
+  fastify.post(
+    '/logout',
+    { preHandler: authenticate },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const token = request.cookies?.token;
+      
+      // Blacklist the token if it exists
+      if (token) {
+        await blacklistToken(token);
+      }
+
+      // Invalidate user cache
+      const user = (request as any).user;
+      if (user?.id) {
+        await invalidateUserCache(user.id);
+      }
+
+      reply.clearCookie('token', { path: '/' });
+      return reply.send({ message: 'Logged out successfully' });
+    }
+  );
 
   fastify.get(
     '/me',

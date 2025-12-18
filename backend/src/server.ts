@@ -2,6 +2,8 @@ import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import { env } from './config/env';
+import { redis } from './config/redis';
+import { rateLimiters } from './middleware/rate-limit';
 import { authRoutes } from './routes/auth';
 import { adminRoutes } from './routes/admin';
 import { teacherRoutes } from './routes/teacher';
@@ -43,8 +45,23 @@ async function buildServer() {
     parseOptions: {},
   });
 
+  // Apply general rate limiting to all routes
+  server.addHook('onRequest', rateLimiters.general);
+
   server.get('/health', async () => {
-    return { status: 'ok', timestamp: new Date().toISOString() };
+    let redisStatus = 'unknown';
+    try {
+      await redis.ping();
+      redisStatus = 'connected';
+    } catch (error) {
+      redisStatus = 'disconnected';
+    }
+
+    return { 
+      status: 'ok', 
+      timestamp: new Date().toISOString(),
+      redis: redisStatus,
+    };
   });
 
   server.get('/api/test-db', async (_request, reply) => {
@@ -111,6 +128,7 @@ if (require.main === module) {
     if (serverInstance) {
       await serverInstance.close();
     }
+    redis.disconnect();
     process.exit(0);
   });
 
@@ -118,6 +136,7 @@ if (require.main === module) {
     if (serverInstance) {
       await serverInstance.close();
     }
+    redis.disconnect();
     process.exit(0);
   });
 
