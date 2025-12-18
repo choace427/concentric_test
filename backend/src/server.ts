@@ -45,7 +45,6 @@ async function buildServer() {
     parseOptions: {},
   });
 
-  // Apply general rate limiting to all routes
   server.addHook('onRequest', rateLimiters.general);
 
   server.get('/health', async () => {

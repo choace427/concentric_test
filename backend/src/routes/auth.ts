@@ -14,7 +14,6 @@ const loginSchema = z.object({
 });
 
 export async function authRoutes(fastify: FastifyInstance) {
-  // Apply rate limiting to login endpoint
   fastify.post<{ Body: z.infer<typeof loginSchema> }>(
     '/login',
     { preHandler: rateLimiters.auth },
@@ -148,12 +147,10 @@ export async function authRoutes(fastify: FastifyInstance) {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const token = request.cookies?.token;
       
-      // Blacklist the token if it exists
       if (token) {
         await blacklistToken(token);
       }
 
-      // Invalidate user cache
       const user = (request as any).user;
       if (user?.id) {
         await invalidateUserCache(user.id);
@@ -183,7 +180,6 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({ error: 'Google OAuth not configured' });
     }
 
-    // Validate role if provided
     if (role && !['admin', 'teacher', 'student'].includes(role)) {
       return reply.status(400).send({ error: 'Invalid role' });
     }
@@ -196,7 +192,6 @@ export async function authRoutes(fastify: FastifyInstance) {
     authUrl.searchParams.set('access_type', 'offline');
     authUrl.searchParams.set('prompt', 'consent');
     
-    // Pass role through state parameter (OAuth standard way to pass custom data)
     if (role) {
       authUrl.searchParams.set('state', role);
     }
@@ -208,7 +203,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     try {
       const { env } = await import('../config/env');
       const code = (request.query as any)?.code;
-      const state = (request.query as any)?.state; // This contains the role
+      const state = (request.query as any)?.state;
       
       if (!code) {
         return reply.redirect(`${env.FRONTEND_URL}/?error=oauth_failed`);
@@ -222,10 +217,9 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.redirect(`${env.FRONTEND_URL}/?error=oauth_not_configured`);
       }
 
-      // Validate role from state parameter
       const role = state && ['admin', 'teacher', 'student'].includes(state) 
         ? state as 'admin' | 'teacher' | 'student' 
-        : 'student'; // Default to student if no role provided
+        : 'student';
 
       const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
@@ -263,7 +257,6 @@ export async function authRoutes(fastify: FastifyInstance) {
         .executeTakeFirst();
 
       if (!user) {
-        // Create new user with the selected role
         const userId = randomUUID();
         user = await db
           .insertInto('users')
@@ -280,8 +273,6 @@ export async function authRoutes(fastify: FastifyInstance) {
           .returningAll()
           .executeTakeFirst();
       } else {
-        // For existing users, validate role if provided
-        // If the user's role doesn't match the selected role, redirect with error
         if (state && user.role !== role) {
           return reply.redirect(`${env.FRONTEND_URL}/?error=role_mismatch&message=Your account role (${user.role}) does not match the selected role (${role})`);
         }

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { db } from '../config/database';
 import { requireRole } from '../middleware/auth';
 import { randomUUID } from 'crypto';
-import { invalidateStatsCache, invalidateClassCache } from '../utils/cache';
+import { invalidateClassCache } from '../utils/cache';
 
 const submissionSchema = z.object({
   assignment_id: z.string().uuid(),
