@@ -8,11 +8,11 @@ test.describe('Authentication Flow', () => {
   test('should display login page', async ({ page }) => {
     await expect(page.getByLabel(/email/i)).toBeVisible();
     await expect(page.getByLabel(/password/i)).toBeVisible();
-    await expect(page.getByRole('button', { name: /login/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible();
   });
 
   test('should show error for empty form submission', async ({ page }) => {
-    await page.getByRole('button', { name: /login/i }).click();
+    await page.getByRole('button', { name: /sign in/i }).click();
     
     await expect(page.getByText(/please fill in all fields/i).first()).toBeVisible();
   });
@@ -20,7 +20,7 @@ test.describe('Authentication Flow', () => {
   test('should show error for invalid credentials', async ({ page }) => {
     await page.getByLabel(/email/i).fill('invalid@example.com');
     await page.getByLabel(/password/i).fill('wrongpassword');
-    await page.getByRole('button', { name: /login/i }).click();
+    await page.getByRole('button', { name: /sign in/i }).click();
 
     await expect(page.getByText(/invalid credentials/i).first()).toBeVisible({ timeout: 5000 });
   });

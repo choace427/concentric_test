@@ -125,7 +125,7 @@ export default function LoginPage() {
               </Select>
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Signing in...' : 'Login'}
+              {isLoading ? 'Signing in...' : 'Sign in'}
             </Button>
           </form>
 
